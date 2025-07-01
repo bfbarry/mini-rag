@@ -1,0 +1,10 @@
+[package]
+name = "mini_rag"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ndarray = "0.16.1"
+ort = "=2.0.0-rc.10"
+text-splitter = "0.27.0"
+tokenizers = "0.21.1"
