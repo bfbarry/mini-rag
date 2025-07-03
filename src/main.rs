@@ -1,5 +1,4 @@
-// use core::error;
-
+pub mod parser;
 use ndarray::{Axis, Ix2};
 use ort::{
     session::{builder::GraphOptimizationLevel, Session}, value::{TensorRef}, Error as OrtError
@@ -7,7 +6,7 @@ use ort::{
 use tokenizers::Tokenizer;
 use text_splitter::{TextSplitter, ChunkConfig};
 use std::{
-    error::Error, fs
+    error::Error
 };
 
 fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Result<Vec<&str>, Box<dyn Error>> {
@@ -59,10 +58,34 @@ fn embed(chunks: &Vec<&str>, tokenizer: &Tokenizer, embedding_session: &mut Sess
     Ok(embeddings.into_owned()) 
 }
 
+fn find_sim_in_range(query_vec: &ndarray::Array1<f32>, 
+                     embeddings: &ndarray::Array2<f32>, 
+                     chunks: &Vec<&str>,
+                     ix0: usize, ix1: usize,
+                    ) -> Result<(f32, String), OrtError> 
+{
+    let mut max_cos = 0.;
+    let mut argmax = "";
+
+    for (embeddings, sentence) in embeddings.axis_iter(Axis(0)).zip(chunks.iter()).skip(ix0).take(ix1-ix0) {
+        let dot_product: f32 = query_vec.iter().zip(embeddings.iter()).map(|(a,b)| a * b).sum();
+        if dot_product > max_cos {
+            max_cos = dot_product;
+            argmax = sentence;
+        }
+
+        // println!("{:.1}%", dot_product*100.);
+    }
+
+    Ok((max_cos, argmax.to_string()))    
+}
 //https://github.com/pykeio/ort/blob/main/examples/sentence-transformers/semantic-similarity.rs
 fn main() -> ort::Result<()> {
-    
-    let sample_input  = fs::read_to_string("src/data/openapi_eda.json").expect("failed to read file");
+    let fname = "src/data/openapi_eda.json";
+    // let fname = "src/data/test.txt";
+    // let sample_input  = fs::read_to_string(fname).expect("failed to read file");
+    let sample_input = parser::parse_openapi(fname).unwrap();
+
     let mut embedding_session = Session::builder()?
                                     .with_optimization_level(GraphOptimizationLevel::Level3)?
                                     // .with_intra_threads(1)?
@@ -75,25 +98,21 @@ fn main() -> ort::Result<()> {
 
     let embeddings = embed(&chunks, &tokenizer, &mut embedding_session).unwrap();
     
-    let query2 = "update retriever";
+    let query2 = "what route updates the retriever";
     let query_embeddings = embed(&vec![query2], &tokenizer, &mut embedding_session).unwrap();
-    let query_vec = query_embeddings.index_axis(Axis(0), 0);
+    let query_vec = query_embeddings.index_axis(Axis(0), 0).into_owned();
     
-    // [3 1 2 4]
-    let mut max_cos = 0.;
-    let mut argmax = "";
-    let mut argmaxes: [&str; 3] = [""; 3];
-    let n1 = 1;
-    let n2 = 10;
+    let n_chunks = chunks.len();
+    let step = n_chunks/5;
 
-    for (embeddings, sentence) in embeddings.axis_iter(Axis(0)).zip(chunks.iter()) {
-        let dot_product: f32 = query_vec.iter().zip(embeddings.iter()).map(|(a,b)| a * b).sum();
-        if dot_product > max_cos {
-            max_cos = dot_product;
-            argmax = sentence;
-        }
-        // println!("\t'{}': {:.1}%", sentence, dot_product*100.);
-    }
-    println!("Argmax is {}", argmax);
+    let (c1, s1) = find_sim_in_range(&query_vec, &embeddings, &chunks, 0, step)?;
+    let (c2, s2) = find_sim_in_range(&query_vec, &embeddings, &chunks, step, step*2)?;
+    let (c3, s3) = find_sim_in_range(&query_vec, &embeddings, &chunks, step*2, step*3)?;
+    let (c4, s4) = find_sim_in_range(&query_vec, &embeddings, &chunks, step*3, step*4)?;
+    let (c5, s5) = find_sim_in_range(&query_vec, &embeddings, &chunks, step*4, n_chunks)?;
+
+    println!("Argmaxes are >>>{}\n\n>>>{}\n\n>>>{}\n\n>>>{}\n\n>>>{}",
+         s1, s2, s3, s4, s5);
+    println!("scores are {} {} {} {} {}", c1, c2, c3, c4, c5);
     Ok(())
 }
