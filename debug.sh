@@ -1,0 +1,1 @@
+RUST_LOG="ort=debug" cargo run

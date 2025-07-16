@@ -122,11 +122,13 @@ type BertLogits = ndarray::Array<f32, Dim<IxDynImpl>>;
 impl <'a> ModelI <'a> for BertModel {
     type EncodeInput = String;
     type OutputTensor = (BertLogits, BertLogits);
-
+    // let model = "onnx_roberta_qa";
     fn new() -> Result<Self, OrtError> {
+        let model = "onnx_roberta_qa";
+        // let model = "onnx_distilbert_qa";
         let modelbase = ModelBase::new(
-            "src/models/onnx_distilbert_qa/model.onnx",
-            "src/models/onnx_distilbert_qa/tokenizer.json"
+            &format!("src/models/{}/model.onnx", model),
+            &format!("src/models/{}/tokenizer.json", model)
             )?;
         let input_ids = vec![];
 
@@ -173,7 +175,7 @@ impl BertModel {
                                 .enumerate().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).unwrap().0;
         let end   = end_logits.index_axis(ndarray::Axis(0), 0).iter().cloned()
                                 .enumerate().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).unwrap().0;
-    
+        println!("s{} e{}", start, end);
         let ids = &self.input_ids[start..=end];
         let ids_u32: Vec<u32> = ids.iter().map(|&e| e as u32).collect();
         let answer = self.modelbase.tokenizer.decode(&ids_u32, true)?;

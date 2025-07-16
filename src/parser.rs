@@ -21,8 +21,8 @@ pub fn parse_openapi(file_path: &str) -> Result<String, Box<dyn std::error::Erro
         for (method, op) in methods {
             let summary = op.summary.unwrap_or_else(|| "No summary".to_string());
             output.push_str(&format!(
-                "route: {} - http method: {} - summary: {}\n",
-                path, method, summary
+                "{} ({}): {}\n ",
+                path, method.to_uppercase(), summary
             ));
         }
     }
