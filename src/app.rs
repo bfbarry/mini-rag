@@ -1,5 +1,6 @@
 use crate::models;
 use crate::utils;
+use crate::parser;
 use models::ModelI;
 use ndarray::{Axis};
 
@@ -44,9 +45,14 @@ impl VecDB {
             res.push((dot_product, sentence));
         }
         res.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
-        println!("len of res {}", res.len());
         Ok(res[..n].to_vec())    
     }    
+}
+
+
+pub struct RAGBase {
+    bert: models::BertModel,
+    vec_db: VecDB
 }
 
 // do I need this?
@@ -58,23 +64,28 @@ enum AgentSpecialization {
 }
 
 // "Agent" in the sense that it has functionality beyond LLM io
-pub trait Agent where Self: Sized {
-    fn new() -> Result<Self, OrtError>;
-    fn query();
-    fn execute();
+pub trait AgentI where {
+    fn execute(&mut self, user_input: &str) -> Result<String, OrtError>;
 
 }
 
-pub struct RAGBase {
-    bert: models::BertModel,
-    vec_db: VecDB
+pub struct OpenAPIAgent {
+    rag_base: RAGBase
 }
 
+
+pub struct CodebaseAgent {
+    rag_base: RAGBase
+}
+
+pub struct AgentBuilder {
+    // this class constructs a different agent depending on user input 
+}
 
 impl RAGBase {
-    pub fn new(data_fpath: &str) -> Result<Self, OrtError> {
+    pub fn new(data: &str, chunk_size: usize, chunks: usize) -> Result<Self, OrtError> {
         let bert = models::BertModel::new()?;
-        let vec_db = VecDB::new(data_fpath, 150, 70)?;
+        let vec_db = VecDB::new(data, chunk_size, chunks)?;
         Ok(Self {
             bert,
             vec_db,
@@ -83,7 +94,7 @@ impl RAGBase {
 
     pub fn query(&mut self, user_input: &str) -> Result<String, OrtError> {
         
-        let topn = self.vec_db.find_top_n_sim(user_input, 3)?;
+        let topn = self.vec_db.find_top_n_sim(user_input, 4)?;
 
         // let mut context = "(A URL is another word for name)".to_string();
         let mut context = String::new();
@@ -92,7 +103,7 @@ impl RAGBase {
 
             // println!("{} {}", score, contents);
             // context.push_str(&format!("{}", contents));
-            context.push_str(&format!("score: {:.2} {}\n\n",score, contents));
+            context.push_str(&format!("[{:.1}% match]\n{}\n\n",score*100., contents));
         }
 
         Ok(context)
@@ -111,5 +122,42 @@ impl RAGBase {
         let answer = self.bert.decode(start_logits, end_logits)?;
         Ok(answer)
 
+    }
+}
+impl OpenAPIAgent {
+    pub fn new(fname: &str) -> Result<Self, OrtError> {
+        let data = parser::parse_openapi(fname).unwrap();
+        let rag_base = RAGBase::new(&data, 150, 70)?;
+        Ok(Self { rag_base})
+    }
+
+}
+
+impl AgentI for OpenAPIAgent {
+
+    fn execute(&mut self, user_input: &str) -> Result<String, OrtError> {
+        // TODO: should store method, path, summary separately to do cool text formatting after
+        //\x1B[1m{BOLD METHOD}\x1B[0m 
+        // \x1B[4m{UNDERLINED URL}\x1B[0m
+
+        Ok(self.rag_base.query(user_input)?)
+    }
+}
+
+impl CodebaseAgent{
+    pub fn new(root_path: &str) -> Result<Self, OrtError> {
+        let data = parser::parse_codebase(root_path).unwrap();
+        let rag_base = RAGBase::new(&data, 250, 100)?;
+        Ok (
+            Self {
+                rag_base
+            }
+        )
+    }
+}
+impl AgentI for CodebaseAgent {
+
+    fn execute(&mut self, user_input: &str) -> Result<String, OrtError> {
+        Ok("great".to_string())
     }
 }

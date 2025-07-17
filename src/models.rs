@@ -3,6 +3,8 @@ use ort::{
 };
 use tokenizers::{Tokenizer};
 use ndarray::{Ix2, IxDynImpl, Dim};
+
+
 pub struct ModelBase  {
     ort_session: Session,
     tokenizer: Tokenizer,
