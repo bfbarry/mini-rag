@@ -1,23 +1,24 @@
 use std::{
     io::{BufReader, prelude::*},
     net::{TcpListener, TcpStream},
+    error::Error
 };
 use std::collections::HashMap;
-use crate::app::{self, OpenAPIAgent};
-
+use crate::app;
 // TODO: use a temporal LRU
 
 pub const PORT: u16 = 7878;
-pub struct API {
-    // listener: TcpListener,
-    agents: HashMap<String,  Box<dyn app::AgentI>>
+pub struct API{
+    agents: HashMap<String,  Box<dyn app::AgentI>>,
+    curr_agent: String, // the agent the user is currently querying
 }
 
 impl API {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new() -> Result<Self, Box<dyn Error>> {
         let agents = HashMap::new();
         Ok(Self {
-            agents
+            agents,
+            curr_agent: String::new()
         })
     }
     
@@ -29,24 +30,7 @@ impl API {
         }
     }
 
-    pub fn handle_connection(&mut self, mut stream: TcpStream) {
-        // let buf_reader = BufReader::new(&stream);
-        // let mut request = Vec::new();
-
-        // for line in buf_reader.lines() {
-        //     println!("new line!");
-        //     let line = line.unwrap();
-        //     if line == "\n" || line.trim().is_empty() {
-        //         break;
-        //     }
-        //     request.push(line);
-        // }
-    
-        // for line in request {
-        //     println!("executing...");
-        //     self.execute(&line, &mut stream);
-        // }
-
+    pub fn handle_connection(&mut self, stream: TcpStream) {
         let reader_stream = stream.try_clone().unwrap(); // For reading
         let mut buf_reader = BufReader::new(reader_stream); // Owns the cloned stream
         let mut writer = stream; // The original stream is now for writing
@@ -66,27 +50,24 @@ impl API {
     
             self.execute(line, &mut writer); // Now safe: writer is a separate stream
         }
-        // println!("Request: {:#?}", request);
     }
 
     pub fn execute(&mut self, line: &str, stream: & mut TcpStream) {
-        let split: Vec<&str> = line.split_whitespace().collect();
-        if split.len() < 2 {
-            let err = "Invalid input";
-            stream.write(err.as_bytes()).unwrap();
-            return;
-        }
-
-        // need an actual parser
-        let ans = match split[0] {
-            "api" => {
-                // stream.write("Good job".as_bytes()).unwrap();
-                self.init_openapiagent(split[1])
-            }, 
-            "apiask" => {
-                let s = &split[1..].join(" ");
-                self.ask_apiagent(s)
+        let words: Vec<&str> = match line.split_whitespace().collect::<Vec<&str>>().as_slice() {
+            [] => vec![line],
+            split => split.to_vec()
+        };
+        // need an actual parser e.g., add api
+        let ans = match words[0] {
+            "apiadd" => {
+                self.init_openapiagent(words[1])
+            },
+            "ask" => {
+                let q = &words[1..].join(" ");
+                self.ask_agent(q)
             }
+            "set" => self.set_agent(&words[1..].join(" ")),
+            "ls" => self.list_agents(),
             _ => Ok("Unknown input".to_string())
         }.unwrap();
 
@@ -97,18 +78,42 @@ impl API {
         stream.flush().unwrap();
     }
 
-    fn init_openapiagent(&mut self, mut fpath: &str) -> Result<String, Box<dyn std::error::Error>> {
-        let test_key = "/Users/brianbarry/Desktop/ucsd-its/mini_rag/src/data/openapi_eda.json";
-        fpath = test_key;
-        let agent = app::OpenAPIAgent::new(fpath).unwrap();
+    fn set_agent(&mut self, ag: &str) -> Result<String, Box<dyn Error>> {
+        self.curr_agent = ag.to_string();
+        Ok("Success".to_string())
+    }
+    fn list_agents(&self) -> Result<String, Box<dyn Error>> {
+        let mut res = String::new();
 
-        self.agents.insert(fpath.to_string(), Box::new(agent));
+        for (i, k) in self.agents.keys().enumerate() {
+            let mut line = format!("[{}] {}\n", i+1, k);
+            if *k == self.curr_agent {
+                line.push_str("(current)");
+            }
+            res.push_str(&line);
+        }
+
+        Ok(res)
+    }
+
+    fn init_openapiagent(&mut self, url: &str) -> Result<String, Box<dyn Error>> {
+        // let test_key = "/Users/brianbarry/Desktop/ucsd-its/mini_rag/src/data/openapi_eda.json";
+        // fpath = test_key;
+        let agent = app::OpenAPIAgent::new(url).unwrap();
+
+        let key = format!("OpenAPI agent @ {}", url);
+        if self.agents.contains_key(&key) {
+            return Ok("Key already exists".to_string())
+        }
+        self.agents.insert(key.to_string(), Box::new(agent));
+        self.curr_agent = key.to_string(); // TODO: use ref instead
         Ok("Success".to_string())
     }
 
-    fn ask_apiagent(&mut self, query: &str) -> Result<String, Box<dyn std::error::Error>> {
-        let test_key = "/Users/brianbarry/Desktop/ucsd-its/mini_rag/src/data/openapi_eda.json";
-        let ag: & mut Box<dyn app::AgentI> = self.agents.get_mut(test_key).unwrap();
+    fn ask_agent(&mut self, query: &str) -> Result<String, Box<dyn Error>> {
+        // let test_key = "/Users/brianbarry/Desktop/ucsd-its/mini_rag/src/data/openapi_eda.json";
+
+        let ag: & mut Box<dyn app::AgentI> = self.agents.get_mut(&self.curr_agent).unwrap();
         let res = ag.execute(query)?;
         Ok(res)
 

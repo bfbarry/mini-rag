@@ -55,6 +55,7 @@ pub struct RAGBase {
     vec_db: VecDB
 }
 
+#[allow(dead_code)]
 // do I need this?
 enum AgentSpecialization {
     OpenAPI,
@@ -73,7 +74,7 @@ pub struct OpenAPIAgent {
     rag_base: RAGBase
 }
 
-
+#[allow(dead_code)]
 pub struct CodebaseAgent {
     rag_base: RAGBase
 }
@@ -110,7 +111,8 @@ impl RAGBase {
 
     }
 
-    fn llm_answer_UNSTABLE(&mut self, user_input: &str) -> Result<String, OrtError> {
+    #[allow(dead_code)]
+    fn llm_answer_unstable(&mut self, user_input: &str) -> Result<String, OrtError> {
         let context = self.query(user_input)?;
         // context = "The battle of Fuck occurred on March 2 1892".to_string();
         let input = format!("Question: {} \nContext:\n{}", user_input, context);
@@ -121,12 +123,12 @@ impl RAGBase {
 
         let answer = self.bert.decode(start_logits, end_logits)?;
         Ok(answer)
-
     }
 }
+
 impl OpenAPIAgent {
-    pub fn new(fname: &str) -> Result<Self, OrtError> {
-        let data = parser::parse_openapi(fname).unwrap();
+    pub fn new(url: &str) -> Result<Self, OrtError> {
+        let data = parser::parse_openapi(url).unwrap();
         let rag_base = RAGBase::new(&data, 150, 70)?;
         Ok(Self { rag_base})
     }

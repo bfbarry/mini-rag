@@ -3,12 +3,20 @@ pub mod models;
 pub mod utils;
 pub mod app;
 pub mod server;
+pub mod client;
+pub mod grep;
 // use app::AgentI;
-// use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-
-
-use std::io::{self, BufReader, Read, Write};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use std::io;
 use std::net::TcpStream;
+
+#[allow(dead_code)]
+enum LogLevel {
+    DEBUG,
+    NONE
+}
+
+const LOGLEVEL: LogLevel = LogLevel::NONE;
 
 fn is_port_in_use(port: u16) -> io::Result<bool> {
     match TcpStream::connect(("127.0.0.1", port)) {
@@ -17,50 +25,18 @@ fn is_port_in_use(port: u16) -> io::Result<bool> {
     }
 }
 
-fn repl() -> Result<(), Box<dyn std::error::Error>> {
-    let server_addr = &format!("127.0.0.1:{}", server::PORT);
-    let stream = TcpStream::connect(server_addr)?;
-    let mut writer = stream.try_clone()?; // for writing
-    let mut reader = BufReader::new(stream); // for reading
-
-    println!("Connected to server at {}", server_addr);
-
-    loop {
-        print!("> ");
-        io::stdout().flush()?;
-
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-        let input = input.trim();
-
-        if input == "exit" {
-            println!("Exiting REPL.");
-            break;
-        }
-        writer.write_all(input.as_bytes())?;
-        writer.write_all(b"\n")?;
-        writer.flush()?;
-
-        let mut len_buf = [0u8; 4];
-        let _ = reader.read_exact(&mut len_buf);
-        let len = u32::from_be_bytes(len_buf) as usize;
-
-        let mut buf = vec![0u8; len];
-        reader.read_exact(&mut buf)?;
-        let res = String::from_utf8_lossy(&buf);
-
-
-        println!("{}", res.trim_end());
-    }
-
-    Ok(())
-}
-
 fn main() -> ort::Result<()> {
-    // tracing_subscriber::registry()
-    // .with(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info,ort=debug".into()))
-    // .with(tracing_subscriber::fmt::layer())
-    // .init();
+
+    match LOGLEVEL {
+        LogLevel::DEBUG => {
+            tracing_subscriber::registry()
+            .with(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info,ort=debug".into()))
+            .with(tracing_subscriber::fmt::layer())
+            .init();
+
+        }
+        LogLevel::NONE => ()
+    }
 
     // let mut open_apiagent = app::OpenAPIAgent::new("src/data/openapi_eda.json")?;
 
@@ -73,7 +49,7 @@ fn main() -> ort::Result<()> {
     match is_port_in_use(server::PORT) {
         Ok(in_use) => {
             if in_use {
-                let _ = repl();
+                let _ = client::repl();
             } else {
                 let mut api_ = server::API::new().unwrap();
                 api_.listen();

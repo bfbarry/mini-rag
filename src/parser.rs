@@ -1,6 +1,6 @@
 use serde::Deserialize;
 use std::{collections::HashMap, fs};
-
+use ureq;
 #[derive(Debug, Deserialize)]
 struct OpenAPI {
     paths: HashMap<String, HashMap<String, Operation>>,
@@ -11,9 +11,14 @@ struct Operation {
     summary: Option<String>,
 }
 
-pub fn parse_openapi(file_path: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let file_content = fs::read_to_string(file_path)?;
-    let openapi: OpenAPI = serde_json::from_str(&file_content)?;
+pub fn parse_openapi(url: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let content: String = ureq::get(url)
+        .header("Example-Header", "header value")
+        .call()?
+        .body_mut()
+        .read_to_string()?;
+    // let file_content = fs::read_to_string(file_path)?;
+    let openapi: OpenAPI = serde_json::from_str(&content)?;
 
     let mut output = String::new();
 
